@@ -1,24 +1,13 @@
 import { NetworkNames } from "@enkryptcom/types";
-import {
-  Connection,
-  PublicKey,
-  SystemProgram,
-  TransactionInstruction,
-  VersionedTransaction,
-} from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { toBN } from "web3-utils";
 import { TOKEN_AMOUNT_INFINITY_AND_BEYOND } from "../../utils/approvals";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  extractComputeBudget,
-  getCreateAssociatedTokenAccountIdempotentInstruction,
   getSPLAssociatedTokenAccountPubkey,
   getTokenProgramOfMint,
-  insertInstructionsAtStartOfTransaction,
   isValidSolanaAddressAsync,
   solAccountExists,
   SPL_TOKEN_ATA_ACCOUNT_SIZE_BYTES,
-  TOKEN_2022_PROGRAM_ID,
   WRAPPED_SOL_ADDRESS,
 } from "../../utils/solana";
 import {
@@ -59,7 +48,7 @@ dotenv.config();
 
 const logger = new DebugLogger("swap:okx");
 
-const OKX_API_URL = "https://www.okx.com";
+const OKX_API_URL = "https://web3.okx.com";
 const OKX_TOKENS_URL = "/api/v5/dex/aggregator/all-tokens";
 const OKX_QUOTE_URL = "/api/v5/dex/aggregator/quote";
 const OKX_SWAP_URL = "/api/v5/dex/aggregator/swap";
@@ -68,7 +57,7 @@ const OKX_SWAP_URL = "/api/v5/dex/aggregator/swap";
  * OKX DEX Aggregator Provider
  *
  * Implements swap functionality using OKX's DEX aggregator API
- * @see https://www.okx.com/docs-v5/en/#rest-api-trading-get-token-list
+ * @see https://web3.okx.com/docs-v5/en/#rest-api-trading-get-token-list
  */
 export class OKX extends ProviderClass {
   network: SupportedNetworkName;
@@ -164,7 +153,6 @@ export class OKX extends ProviderClass {
         throw new Error("Something went wrong: no fee config for OKX swap");
       }
 
-      const fromPubkey = new PublicKey(options.fromAddress);
       const toPubkey = new PublicKey(options.toAddress);
 
       // Source token
