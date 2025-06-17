@@ -95,7 +95,9 @@ export class OKX extends ProviderClass {
 
     // Initialize token mappings
     this.toTokens[this.network] ??= {};
-    this.okxTokens = new Map(okxTokenList.map((t) => [t.address, t]));
+    this.okxTokens = new Map(
+      okxTokenList.map((t) => [t.tokenContractAddress, t]),
+    );
 
     for (const enkryptToken of enkryptTokenList) {
       let isTradeable = false;
@@ -204,9 +206,9 @@ export class OKX extends ProviderClass {
       }
 
       return {
-        fromTokenAmount: toBN(quote.inAmount),
+        fromTokenAmount: toBN(quote.fromTokenAmount),
         toTokenAmount: toBN(
-          Math.floor((1 - feeConf.fee) * Number(quote.outAmount))
+          Math.floor((1 - feeConf.fee) * Number(quote.toTokenAmount))
             .toFixed(10)
             .replace(/\.?0+$/, ""),
         ),
@@ -254,20 +256,16 @@ export class OKX extends ProviderClass {
       };
 
       logger.info(
-        `getSwap: Quote inAmount:  ${okxQuote.inAmount} ${quote.options.fromToken.symbol}`,
+        `getSwap: Quote inAmount:  ${okxQuote.fromTokenAmount} ${quote.options.fromToken.symbol}`,
       );
       logger.info(
-        `getSwap: Quote outAmount: ${okxQuote.outAmount} ${quote.options.toToken.symbol}`,
+        `getSwap: Quote outAmount: ${okxQuote.toTokenAmount} ${quote.options.toToken.symbol}`,
       );
 
       return {
         transactions: [enkryptTransaction],
-        fromTokenAmount: toBN(okxQuote.inAmount),
-        toTokenAmount: toBN(
-          Math.floor((1 - feePercentage / 100) * Number(okxQuote.outAmount))
-            .toFixed(10)
-            .replace(/\.?0+$/, ""),
-        ),
+        fromTokenAmount: toBN(okxQuote.fromTokenAmount),
+        toTokenAmount: toBN(okxQuote.toTokenAmount),
         additionalNativeFees: toBN(rentFees),
         provider: this.name,
         slippage: quote.meta.slippage,
@@ -366,11 +364,12 @@ export class OKX extends ProviderClass {
 
     const quoteParams = {
       chainId: "501", // Solana Chain ID
-      fromToken: srcMint.toBase58(),
-      toToken: dstMint.toBase58(),
+      fromTokenAddress: srcMint.toBase58(),
+      toTokenAddress: dstMint.toBase58(),
       amount: amount.toString(10),
-      slippage: slippageBps.toString(10),
-      feeBps: referralFeeBps.toString(10),
+      slippage: (slippageBps / 100).toString(),
+      feePercent: (referralFeeBps / 100).toString(),
+      swapMode: "exactIn",
     };
 
     const timestamp = new Date().toISOString();
@@ -389,7 +388,7 @@ export class OKX extends ProviderClass {
     }
 
     const data = await response.json();
-    return data.data;
+    return data.data[0];
   }
 
   /**
@@ -401,21 +400,23 @@ export class OKX extends ProviderClass {
   ): Promise<OKXSwapResponse> {
     const timestamp = new Date().toISOString();
     const requestPath = OKX_SWAP_URL;
-    const headers = this.getHeaders(timestamp, "POST", requestPath, "");
+    const headers = this.getHeaders(timestamp, "GET", requestPath, "");
 
-    const response = await fetch(`${OKX_API_URL}${requestPath}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(params),
-      signal: context?.signal,
-    });
+    const response = await fetch(
+      `${OKX_API_URL}${requestPath}?${new URLSearchParams(params as any).toString()}`,
+      {
+        method: "GET",
+        headers,
+        signal: context?.signal,
+      },
+    );
 
     if (!response.ok) {
       throw new Error(`Failed to get OKX swap: ${response.statusText}`);
     }
 
     const data = await response.json();
-    return data.data;
+    return data.data[0];
   }
 
   /**
@@ -503,11 +504,16 @@ export class OKX extends ProviderClass {
     // Get swap transaction
     const swap = await this.getOKXSwap(
       {
-        userPublicKey: fromPubkey.toBase58(),
-        quoteResponse: quote,
-        wrapAndUnwrapSol: true,
-        useSharedAccounts: true,
-        dynamicComputeUnitLimit: true,
+        chainId: "501",
+        amount: options.amount.toString(10),
+        swapMode: "exactIn",
+        fromTokenAddress: srcMint.toBase58(),
+        toTokenAddress: dstMint.toBase58(),
+        slippage: (
+          Math.round(100 * parseFloat(meta.slippage || DEFAULT_SLIPPAGE)) / 100
+        ).toString(),
+        userWalletAddress: fromPubkey.toBase58(),
+        feePercent: (Math.round(10000 * feeConf.fee) / 100).toString(),
       },
       context,
     );
@@ -532,7 +538,7 @@ export class OKX extends ProviderClass {
 
     return {
       okxQuote: quote,
-      base64SwapTransaction: swap.swapTransaction,
+      base64SwapTransaction: swap.tx.data,
       feePercentage: feeConf.fee * 100,
       rentFees,
     };

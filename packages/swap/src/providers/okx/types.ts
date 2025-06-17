@@ -4,128 +4,155 @@
 
 export interface OKXTokenInfo {
   /** Token address */
-  address: string;
+  tokenContractAddress: string;
   /** Token name */
-  name: string;
+  tokenName: string;
   /** Token symbol */
-  symbol: string;
+  tokenSymbol: string;
   /** Token decimals */
-  decimals: string;
+  decimal: string;
+  /** Token logo URL */
+  tokenLogoUrl: string;
 }
 
 export interface OKXQuoteResponse {
-  /** Input token mint address */
-  inputMint: string;
-  /** Input amount */
-  inAmount: string;
-  /** Output token mint address */
-  outputMint: string;
-  /** Output amount */
-  outAmount: string;
-  /** Minimum output amount (with slippage) */
-  otherAmountThreshold: string;
-  /** Swap mode (e.g. "ExactIn") */
+  /** Chain ID */
+  chainId: string;
+  /** Chain Index */
+  chainIndex: string;
+  /** Swap mode */
   swapMode: string;
-  /** Slippage in basis points */
-  slippageBps: number;
-  /** Platform fee information */
-  platformFee: null | {
-    /** Fee amount */
-    amount: string;
-    /** Fee in basis points */
-    feeBps: number;
-  };
+  /** Input token amount */
+  fromTokenAmount: string;
+  /** Output token amount */
+  toTokenAmount: string;
+  /** Original output token amount */
+  originToTokenAmount: string;
   /** Price impact percentage */
-  priceImpactPct: string;
-  /** Route plan details */
-  routePlan: {
-    swapInfo: {
-      /** AMM key */
-      ammKey: string;
-      /** AMM label */
-      label: string;
-      /** Input token mint */
-      inputMint: string;
-      /** Output token mint */
-      outputMint: string;
-      /** Input amount */
-      inAmount: string;
-      /** Output amount */
-      outAmount: string;
-      /** Fee amount */
-      feeAmount: string;
-      /** Fee token mint */
-      feeMint: string;
-    };
-    /** Percentage of route */
-    percent: number;
+  priceImpactPercentage: string;
+  /** Trade fee in USD */
+  tradeFee: string;
+  /** Estimated gas fee */
+  estimateGasFee: string;
+  /** DEX router list */
+  dexRouterList: {
+    router: string;
+    routerPercent: string;
+    subRouterList: {
+      dexProtocol: {
+        dexName: string;
+        percent: string;
+      }[];
+      fromToken: {
+        decimal: string;
+        isHoneyPot: boolean;
+        taxRate: string;
+        tokenContractAddress: string;
+        tokenSymbol: string;
+        tokenUnitPrice: string;
+      };
+      toToken: {
+        decimal: string;
+        isHoneyPot: boolean;
+        taxRate: string;
+        tokenContractAddress: string;
+        tokenSymbol: string;
+        tokenUnitPrice: string;
+      };
+    }[];
   }[];
-  /** Context slot */
-  contextSlot: number;
-  /** Time taken for quote */
-  timeTaken: number;
+  /** Quote comparison list */
+  quoteCompareList: {
+    amountOut: string;
+    dexLogo: string;
+    dexName: string;
+    tradeFee: string;
+  }[];
+  /** From token info */
+  fromToken: {
+    decimal: string;
+    isHoneyPot: boolean;
+    taxRate: string;
+    tokenContractAddress: string;
+    tokenSymbol: string;
+    tokenUnitPrice: string;
+  };
+  /** To token info */
+  toToken: {
+    decimal: string;
+    isHoneyPot: boolean;
+    taxRate: string;
+    tokenContractAddress: string;
+    tokenSymbol: string;
+    tokenUnitPrice: string;
+  };
 }
 
 export interface OKXSwapParams {
-  /** User's public key */
-  userPublicKey: string;
-  /** Whether to wrap/unwrap SOL */
-  wrapAndUnwrapSol?: boolean;
-  /** Use shared accounts */
-  useSharedAccounts?: boolean;
-  /** Fee account for referral */
-  feeAccount?: string;
-  /** Tracking account */
-  trackingAccount?: string;
-  /** Compute unit price in micro-lamports */
-  computeUnitPriceMicroLamports?: number;
-  /** Prioritization fee in lamports */
-  prioritizationFeeLamports?:
-    | number
-    | "auto"
-    | {
-        /** Auto multiplier */
-        autoMultiplier: number;
-      };
-  /** Use legacy transaction */
-  asLegacyTransaction?: boolean;
-  /** Use token ledger */
-  useTokenLedger?: boolean;
-  /** Destination token account */
-  destinationTokenAccount?: string;
-  /** Dynamic compute unit limit */
-  dynamicComputeUnitLimit?: boolean;
-  /** Skip user account RPC calls */
-  skipUserAccountRpcCalls?: boolean;
-  /** Quote response */
-  quoteResponse: OKXQuoteResponse;
+  /** Chain ID */
+  chainId?: string;
+  /** Chain Index */
+  chainIndex?: string;
+  /** Amount */
+  amount: string;
+  /** Swap mode */
+  swapMode: string;
+  /** From token address */
+  fromTokenAddress: string;
+  /** To token address */
+  toTokenAddress: string;
+  /** Slippage */
+  slippage: string;
+  /** User wallet address */
+  userWalletAddress: string;
+  /** Swap receiver address */
+  swapReceiverAddress?: string;
+  /** Fee percent */
+  feePercent?: string;
+  /** From token referrer wallet address */
+  fromTokenReferrerWalletAddress?: string;
+  /** To token referrer wallet address */
+  toTokenReferrerWalletAddress?: string;
+  /** Positive slippage percent */
+  positiveSlippagePercent?: string;
+  /** Positive slippage fee address */
+  positiveSlippageFeeAddress?: string;
+  /** Gas limit */
+  gasLimit?: string;
+  /** Gas level */
+  gasLevel?: string;
+  /** Compute unit price */
+  computeUnitPrice?: string;
+  /** Compute unit limit */
+  computeUnitLimit?: string;
+  /** DEX IDs */
+  dexIds?: string;
+  /** Direct route */
+  directRoute?: boolean;
+  /** Price impact protection percentage */
+  priceImpactProtectionPercentage?: string;
+  /** Call data memo */
+  callDataMemo?: string;
+  /** Auto slippage */
+  autoSlippage?: boolean;
+  /** Max auto slippage */
+  maxAutoSlippage?: string;
 }
 
 export interface OKXSwapResponse {
-  /** Base64 encoded versioned transaction */
-  swapTransaction: string;
-  /** Last valid block height */
-  lastValidBlockHeight: number;
-  /** Prioritization fee in lamports */
-  prioritizationFeeLamports?: number;
-  /** Compute unit limit */
-  computeUnitLimit?: number;
-  /** Prioritization type */
-  prioritizationType?: {
-    computeBudget?: {
-      /** Micro-lamports */
-      microLamports: number;
-      /** Estimated micro-lamports */
-      estimatedMicroLamports: number;
-    };
+  /** Router result */
+  routerResult: OKXQuoteResponse;
+  /** Transaction data */
+  tx: {
+    data: string;
+    from: string;
+    gas: string;
+    gasPrice: string;
+    maxPriorityFeePerGas: string;
+    minReceiveAmount: string;
+    signatureData: string[];
+    to: string;
+    value: string;
+    maxSpendAmount?: string;
   };
-  /** Dynamic slippage report */
-  dynamicSlippageReport: null | {
-    slippageBps?: null | string | number;
-    otherAmount?: null | string | number;
-    simulatedIncurredSlippageBps?: null | string | number;
-    amplificationRatio?: null | string | number;
-  };
-  /** Simulation error */
-  simulationError: null;
-} 
+}
