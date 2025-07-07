@@ -113,6 +113,10 @@ export interface OKXSwapParams {
   fromTokenReferrerWalletAddress?: string;
   /** To token referrer wallet address */
   toTokenReferrerWalletAddress?: string;
+  /** From referrer address */
+  fromReferrerAddress?: string;
+  /** To token referrer address */
+  toTokenReferrerAddress?: string;
   /** Positive slippage percent */
   positiveSlippagePercent?: string;
   /** Positive slippage fee address */
