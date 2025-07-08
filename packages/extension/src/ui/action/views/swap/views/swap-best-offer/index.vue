@@ -61,7 +61,7 @@
 
         <transaction-fee-view
           v-model="isOpenSelectFee"
-          :fees="gasCostValues"
+          :fees="gasCostValues as GasFeeType"
           :selected="selectedFee"
           :is-header="true"
           @gas-type-changed="selectFee"

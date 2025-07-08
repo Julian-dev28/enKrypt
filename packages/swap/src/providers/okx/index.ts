@@ -83,9 +83,9 @@ const OKX_TOKENS_URL = "/api/v5/dex/aggregator/all-tokens";
 const OKX_QUOTE_URL = "/api/v5/dex/aggregator/quote";
 const OKX_SWAP_URL = "/api/v5/dex/aggregator/swap";
 
-// Rate limiting: minimum 2000ms between requests (increased from 500ms)
+// Rate limiting: minimum 2000ms between requests
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 2000; // ms (increased from 500ms)
+const MIN_REQUEST_INTERVAL = 2000; // ms
 let requestCount = 0;
 
 // Helper to enforce rate limiting
@@ -381,9 +381,6 @@ export class OKX extends ProviderClass {
     }
   }
 
-  /**
-   * Get swap transaction details
-   */
   async getSwap(
     quote: SwapQuote,
     context?: { signal?: AbortSignal },
@@ -400,6 +397,23 @@ export class OKX extends ProviderClass {
         kind: "versioned",
         thirdPartySignatures: [],
       };
+
+      logger.info(`OKX getSwap: Final transaction data check:`);
+      logger.info(`  - serialized length: ${base64SwapTransaction.length}`);
+      logger.info(
+        `  - first 100 chars: ${base64SwapTransaction.substring(0, 100)}`,
+      );
+      logger.info(
+        `  - last 100 chars: ${base64SwapTransaction.substring(base64SwapTransaction.length - 100)}`,
+      );
+
+      // Verify it's still valid base64
+      try {
+        const testDecode = Buffer.from(base64SwapTransaction, "base64");
+        logger.info(`  - decoded length: ${testDecode.length} bytes`);
+      } catch (testError) {
+        logger.error(`  - base64 decode test failed: ${testError}`);
+      }
 
       logger.info(
         `getSwap: Quote inAmount:  ${okxQuote.fromTokenAmount} ${quote.options.fromToken.symbol}`,
@@ -535,6 +549,8 @@ export class OKX extends ProviderClass {
         swapMode: "exactIn",
       };
 
+      logger.info(`OKX: Quote parameters:`, quoteParams);
+
       const timestamp = new Date().toISOString();
       const requestPath = OKX_QUOTE_URL;
       const queryString = "?" + new URLSearchParams(quoteParams).toString();
@@ -545,23 +561,63 @@ export class OKX extends ProviderClass {
         queryString,
       );
 
-      const response = await fetch(
-        `${OKX_API_URL}${requestPath}${queryString}`,
-        {
-          method: "GET",
-          headers,
-          signal: context?.signal,
-        },
+      const fullUrl = `${OKX_API_URL}${requestPath}${queryString}`;
+      logger.info(`OKX: Making quote API call to: ${fullUrl}`);
+
+      const response = await fetch(fullUrl, {
+        method: "GET",
+        headers,
+        signal: context?.signal,
+      });
+
+      logger.info(
+        `OKX: Quote response status: ${response.status} ${response.statusText}`,
       );
 
       if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`OKX: Quote API error response:`, errorText);
         throw new Error(
-          `Failed to get OKX quote: ${response.status} ${response.statusText}`,
+          `Failed to get OKX quote: ${response.status} ${response.statusText}. Response: ${errorText.substring(0, 500)}`,
         );
       }
 
       const data = await response.json();
-      return data.data[0];
+      logger.info(`OKX: Quote API response:`, JSON.stringify(data, null, 2));
+
+      // Validate quote response
+      if (!data) {
+        throw new Error(`OKX quote API returned null/undefined response`);
+      }
+
+      if (data.code !== undefined && data.code !== "0") {
+        logger.error(
+          `OKX: Quote API returned error code:`,
+          data.code,
+          data.msg || data.message,
+        );
+        throw new Error(
+          `OKX quote API error: ${data.code} - ${data.msg || data.message || "Unknown error"}`,
+        );
+      }
+
+      if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
+        logger.error(`OKX: No quote data available:`, data);
+        throw new Error(
+          `No quote available from OKX for tokens ${srcMint.toBase58()} -> ${dstMint.toBase58()}, amount: ${amount.toString()}`,
+        );
+      }
+
+      const quote = data.data[0];
+      if (!quote || !quote.fromTokenAmount || !quote.toTokenAmount) {
+        logger.error(`OKX: Invalid quote structure:`, quote);
+        throw new Error(`Invalid quote data from OKX API`);
+      }
+
+      logger.info(
+        `OKX: Successfully received quote: ${quote.fromTokenAmount} -> ${quote.toTokenAmount}`,
+      );
+      return quote;
     });
   }
 
@@ -569,13 +625,13 @@ export class OKX extends ProviderClass {
    * Get swap transaction from OKX API
    */
   private async getOKXSwap(
-    params: OKXSwapParams,
+    params: any,
     context?: { signal?: AbortSignal },
   ): Promise<OKXSwapResponse> {
     return retryRequest(async () => {
       const timestamp = new Date().toISOString();
       const requestPath = OKX_SWAP_URL;
-      const queryString = "?" + new URLSearchParams(params as any).toString();
+      const queryString = "?" + new URLSearchParams(params).toString();
       const headers = this.getHeaders(
         timestamp,
         "GET",
@@ -583,19 +639,14 @@ export class OKX extends ProviderClass {
         queryString,
       );
 
-      console.log(
-        `OKX: Making swap API call to: ${OKX_API_URL}${requestPath}${queryString}`,
-      );
-      console.log(`OKX: Headers:`, headers);
+      const fullUrl = `${OKX_API_URL}${requestPath}${queryString}`;
+      logger.info(`OKX: Making swap API call to: ${fullUrl}`);
 
-      const response = await fetch(
-        `${OKX_API_URL}${requestPath}${queryString}`,
-        {
-          method: "GET",
-          headers,
-          signal: context?.signal,
-        },
-      );
+      const response = await fetch(fullUrl, {
+        method: "GET",
+        headers,
+        signal: context?.signal,
+      });
 
       logger.info(
         `OKX: Response status: ${response.status} ${response.statusText}`,
@@ -605,16 +656,36 @@ export class OKX extends ProviderClass {
         const errorText = await response.text();
         logger.error(`OKX: API error response:`, errorText);
         throw new Error(
-          `Failed to get OKX swap: ${response.status} ${response.statusText}`,
+          `Failed to get OKX swap: ${response.status} ${response.statusText}. Response: ${errorText.substring(0, 500)}`,
         );
       }
 
       const data = await response.json();
-      logger.info(`OKX: Raw API response:`, data);
-      logger.info(
-        `OKX Swap API Response Debug:`,
-        JSON.stringify(data, null, 2),
-      );
+
+      // Log the response structure for debugging
+      logger.info(`OKX: Swap API response structure:`, {
+        hasData: !!data,
+        hasDataArray: !!(data && data.data),
+        dataLength: data && data.data ? data.data.length : 0,
+        code: data?.code,
+        message: data?.msg || data?.message,
+      });
+
+      // Validate response structure
+      if (!data) {
+        throw new Error(`OKX API returned null/undefined response`);
+      }
+
+      if (data.code !== undefined && data.code !== "0") {
+        logger.error(
+          `OKX: API returned error code:`,
+          data.code,
+          data.msg || data.message,
+        );
+        throw new Error(
+          `OKX API error: ${data.code} - ${data.msg || data.message || "Unknown error"}`,
+        );
+      }
 
       if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
         logger.error(`OKX: Invalid response structure:`, data);
@@ -622,13 +693,49 @@ export class OKX extends ProviderClass {
       }
 
       const swapData = data.data[0];
-      logger.info(`OKX: Swap data:`, swapData);
-
-      if (!swapData || !swapData.tx) {
-        logger.error(`OKX: Missing tx in swap data:`, swapData);
-        throw new Error(`Missing tx in OKX swap response`);
+      if (!swapData || !swapData.tx || !swapData.tx.data) {
+        logger.error(`OKX: Missing transaction data:`, swapData);
+        throw new Error(`Missing transaction data in OKX response`);
       }
 
+      // CRITICAL: Log the exact transaction data we receive
+      const rawTxData = swapData.tx.data;
+      logger.info("=== OKX TRANSACTION DATA DEBUG ===");
+      logger.info(`Raw tx data length: ${rawTxData.length}`);
+      logger.info(`Raw tx data type: ${typeof rawTxData}`);
+      logger.info(`Raw tx data (first 100): ${rawTxData.substring(0, 100)}`);
+      logger.info(
+        `Raw tx data (last 100): ${rawTxData.substring(rawTxData.length - 100)}`,
+      );
+
+      // Validate base64 format
+      const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+      const isValidBase64 = base64Regex.test(rawTxData);
+      logger.info(`Base64 format validation: ${isValidBase64}`);
+
+      if (!isValidBase64) {
+        throw new Error(`Invalid base64 format in transaction data`);
+      }
+
+      // Test decode
+      try {
+        const testDecode = Buffer.from(rawTxData, "base64");
+        logger.info(`✅ Successfully decoded to ${testDecode.length} bytes`);
+        logger.info(
+          `Decoded data (first 20 bytes): ${Array.from(testDecode.slice(0, 20))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join(" ")}`,
+        );
+      } catch (e) {
+        logger.error(`❌ Failed to decode as base64: ${e.message}`);
+        throw new Error(
+          `Cannot decode transaction data as base64: ${e.message}`,
+        );
+      }
+
+      logger.info("=== END OKX TRANSACTION DEBUG ===");
+
+      logger.info(`OKX: Successfully received swap transaction data`);
       return swapData;
     });
   }
@@ -685,7 +792,7 @@ export class OKX extends ProviderClass {
   }
 
   /**
-   * Query swap info from OKX API
+   * Query swap info from OKX API - Fixed version
    */
   private async querySwapInfo(
     options: getQuoteOptions,
@@ -704,6 +811,7 @@ export class OKX extends ProviderClass {
       );
       meta = { ...meta, walletIdentifier: WalletIdentifier.enkrypt };
     }
+
     const feeConf = FEE_CONFIGS[this.name][meta.walletIdentifier];
     if (!feeConf) {
       throw new Error("Something went wrong: no fee config for OKX swap");
@@ -712,88 +820,114 @@ export class OKX extends ProviderClass {
     const fromPubkey = new PublicKey(options.fromAddress);
     const toPubkey = new PublicKey(options.toAddress);
 
-    // Source token
-    let srcMint: PublicKey;
+    // CRITICAL FIX: Use native SOL format for swap API calls (not wrapped SOL)
+    let srcTokenAddress: string;
     if (options.fromToken.address === NATIVE_TOKEN_ADDRESS) {
-      srcMint = new PublicKey(WRAPPED_SOL_ADDRESS);
+      srcTokenAddress = "11111111111111111111111111111111"; // Native SOL format
     } else {
-      srcMint = new PublicKey(options.fromToken.address);
+      srcTokenAddress = options.fromToken.address;
     }
 
-    // Destination token
-    let dstMint: PublicKey;
+    let dstTokenAddress: string;
     if (options.toToken.address === NATIVE_TOKEN_ADDRESS) {
-      dstMint = new PublicKey(WRAPPED_SOL_ADDRESS);
+      dstTokenAddress = "11111111111111111111111111111111"; // Native SOL format
     } else {
-      dstMint = new PublicKey(options.toToken.address);
+      dstTokenAddress = options.toToken.address;
     }
 
-    // Get quote
+    // Get quote first (using wrapped SOL addresses for quote API)
+    const srcMint = new PublicKey(
+      srcTokenAddress === "11111111111111111111111111111111"
+        ? WRAPPED_SOL_ADDRESS
+        : srcTokenAddress,
+    );
+    const dstMint = new PublicKey(
+      dstTokenAddress === "11111111111111111111111111111111"
+        ? WRAPPED_SOL_ADDRESS
+        : dstTokenAddress,
+    );
+
     const quote = await this.getOKXQuote(
       {
         srcMint,
         dstMint,
         amount: BigInt(options.amount.toString(10)),
         slippageBps: Math.round(
-          5 * parseFloat(meta.slippage || DEFAULT_SLIPPAGE),
+          100 * parseFloat(meta.slippage || DEFAULT_SLIPPAGE),
         ),
         referralFeeBps: Math.round(10000 * feeConf.fee),
       },
       context,
     );
 
-    // Get swap transaction
-    logger.info(`OKX: About to call getOKXSwap with params:`, {
+    // Build swap parameters EXACTLY like working script
+    const swapParams: any = {
       chainId: "501",
       amount: options.amount.toString(10),
-      swapMode: "exactIn",
-      fromTokenAddress: srcMint.toBase58(),
-      toTokenAddress: dstMint.toBase58(),
-      slippage: (
-        Math.round(5 * parseFloat(meta.slippage || DEFAULT_SLIPPAGE)) / 100
-      ).toString(),
-      userWalletAddress: fromPubkey.toBase58(),
-      feePercent: (Math.round(10000 * feeConf.fee) / 100).toString(),
-      autoSlippage: false,
-      maxAutoSlippage: "50",
-      fromReferrerAddress: fromPubkey.toBase58(),
-      toTokenReferrerAddress: toPubkey.toBase58(),
-    });
+      fromTokenAddress: srcTokenAddress, // Use native format for swap
+      toTokenAddress: dstTokenAddress, // Use native format for swap
+      userWalletAddress: options.fromAddress,
+      slippage: parseFloat(meta.slippage || DEFAULT_SLIPPAGE).toString(),
+      autoSlippage: "true", // STRING, not boolean - CRITICAL
+      maxAutoSlippageBps: "100", // Add this parameter - REQUIRED
+    };
 
-    const swap = await this.getOKXSwap(
-      {
-        chainId: "501",
-        amount: options.amount.toString(10),
-        swapMode: "exactIn",
-        fromTokenAddress: srcMint.toBase58(),
-        toTokenAddress: dstMint.toBase58(),
-        slippage: (
-          Math.round(5 * parseFloat(meta.slippage || DEFAULT_SLIPPAGE)) / 100
-        ).toString(),
-        userWalletAddress: fromPubkey.toBase58(),
-        feePercent: (Math.round(10000 * feeConf.fee) / 100).toString(),
-        autoSlippage: false,
-        maxAutoSlippage: "50",
-        fromReferrerAddress: fromPubkey.toBase58(),
-        toTokenReferrerAddress: toPubkey.toBase58(),
-      },
-      context,
-    );
+    // Only add fee parameters if there's actually a fee and referrer
+    const feePercent = Math.round(10000 * feeConf.fee) / 100;
+    if (feePercent > 0 && feeConf.referrer) {
+      swapParams.feePercent = feePercent.toString();
+      swapParams.toTokenReferrerAddress = feeConf.referrer;
+      logger.info(
+        `OKX: Adding fee parameters - feePercent: ${feePercent}%, referrer: ${feeConf.referrer}`,
+      );
+    }
 
-    // Debug: Log the swap response structure
-    logger.info(`OKX Swap Response Debug:`, swap);
-    logger.info(`OKX Swap Response Debug:`, JSON.stringify(swap, null, 2));
+    logger.info(`OKX: Swap parameters:`, swapParams);
 
-    // Calculate rent fees
-    const dstTokenProgramId = await getTokenProgramOfMint(this.conn, dstMint);
-    const dstATAPubkey = getSPLAssociatedTokenAccountPubkey(
-      toPubkey,
-      dstMint,
-      dstTokenProgramId,
+    const swap = await this.getOKXSwap(swapParams, context);
+
+    // Basic validation only
+    if (!swap || !swap.tx || !swap.tx.data) {
+      throw new Error(`Invalid swap response from OKX API`);
+    }
+
+    const txData = swap.tx.data;
+
+    // CRITICAL: Validate the base64 data before returning
+    try {
+      const testDecode = Buffer.from(txData, "base64");
+      if (testDecode.length === 0) {
+        throw new Error("Decoded transaction data is empty");
+      }
+      logger.info(
+        `OKX: Transaction data validated - ${txData.length} chars → ${testDecode.length} bytes`,
+      );
+    } catch (decodeError) {
+      logger.error(`OKX: Invalid base64 transaction data: ${decodeError}`);
+      throw new Error(
+        `Invalid base64 transaction data from OKX: ${decodeError.message}`,
+      );
+    }
+
+    // Calculate rent fees for destination token account
+    const finalDstMint = new PublicKey(
+      dstTokenAddress === "11111111111111111111111111111111"
+        ? WRAPPED_SOL_ADDRESS
+        : dstTokenAddress,
     );
 
     let rentFees = 0;
     try {
+      const dstTokenProgramId = await getTokenProgramOfMint(
+        this.conn,
+        finalDstMint,
+      );
+      const dstATAPubkey = getSPLAssociatedTokenAccountPubkey(
+        toPubkey,
+        finalDstMint,
+        dstTokenProgramId,
+      );
+
       const dstATAExists = await solAccountExists(this.conn, dstATAPubkey);
       if (!dstATAExists) {
         const extraRentFee = await this.conn.getMinimumBalanceForRentExemption(
@@ -802,82 +936,13 @@ export class OKX extends ProviderClass {
         rentFees += extraRentFee;
       }
     } catch (error) {
-      // If we can't check if the account exists (RPC timeout), assume it doesn't exist
-      // and add rent fees as a safety measure
-      logger.warn(
-        `Could not check if destination token account exists: ${error}`,
-      );
-      try {
-        const extraRentFee = await this.conn.getMinimumBalanceForRentExemption(
-          SPL_TOKEN_ATA_ACCOUNT_SIZE_BYTES,
-        );
-        rentFees += extraRentFee;
-      } catch (rentError) {
-        logger.warn(`Could not get rent exemption: ${rentError}`);
-        // Use a default rent fee if we can't get it
-        rentFees += 2039280; // Default SOL rent exemption for token account
-      }
-    }
-
-    logger.info(`OKX: About to access swap.tx.data`);
-    logger.info(`OKX: swap object:`, swap);
-    logger.info(`OKX: swap.tx:`, swap.tx);
-    logger.info(`OKX: swap.tx.data length:`, swap.tx.data?.length);
-    logger.info(
-      `OKX: swap.tx.data (first 100 chars):`,
-      swap.tx.data?.substring(0, 100),
-    );
-
-    if (!swap.tx) {
-      logger.error(`OKX: swap.tx is undefined!`);
-      throw new Error(`Missing tx in swap response`);
-    }
-
-    if (!swap.tx.data) {
-      logger.error(`OKX: swap.tx.data is undefined!`);
-      throw new Error(`Missing tx.data in swap response`);
-    }
-
-    // Check if the transaction data looks valid
-    if (swap.tx.data.length < 100) {
-      logger.warn(`OKX: Transaction data seems very short:`, swap.tx.data);
-      // Continue anyway
-    }
-
-    // Validate that the transaction data is valid base64
-    try {
-      Buffer.from(swap.tx.data, "base64");
-    } catch (error) {
-      logger.error(`OKX: Invalid base64 transaction data:`, error);
-      throw new Error(`Invalid base64 transaction data from OKX API`);
-    }
-
-    // Log transaction data info for debugging
-    const decodedData = Buffer.from(swap.tx.data, "base64");
-    logger.info(`OKX: Transaction data length: ${decodedData.length} bytes`);
-    logger.info(
-      `OKX: Transaction data (first 50 bytes):`,
-      decodedData.subarray(0, 50),
-    );
-
-    // Try to deserialize the transaction to validate it (like Jupiter does)
-    try {
-      const { VersionedTransaction } = await import("@solana/web3.js");
-      VersionedTransaction.deserialize(decodedData);
-      logger.info(`OKX: Transaction data is valid versioned transaction`);
-    } catch (deserializeError) {
-      logger.warn(
-        `OKX: Transaction data could not be deserialized: ${deserializeError.message}`,
-      );
-      // Continue anyway, pass through whatever data we got
-      logger.info(
-        `OKX: Proceeding with transaction data despite deserialization failure`,
-      );
+      logger.warn(`Could not check destination token account: ${error}`);
+      rentFees += 2039280; // Default SOL rent exemption
     }
 
     return {
       okxQuote: quote,
-      base64SwapTransaction: swap.tx.data,
+      base64SwapTransaction: txData,
       feePercentage: feeConf.fee * 100,
       rentFees,
     };

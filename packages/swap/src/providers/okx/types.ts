@@ -1,5 +1,5 @@
 /**
- * OKX DEX Aggregator API Types
+ * OKX DEX Aggregator API Types - Updated
  */
 
 export interface OKXTokenInfo {
@@ -90,33 +90,33 @@ export interface OKXQuoteResponse {
 
 export interface OKXSwapParams {
   /** Chain ID */
-  chainId?: string;
-  /** Chain Index */
-  chainIndex?: string;
+  chainId: string;
   /** Amount */
   amount: string;
-  /** Swap mode */
-  swapMode: string;
   /** From token address */
   fromTokenAddress: string;
   /** To token address */
   toTokenAddress: string;
-  /** Slippage */
-  slippage: string;
   /** User wallet address */
   userWalletAddress: string;
-  /** Swap receiver address */
-  swapReceiverAddress?: string;
+  /** Slippage */
+  slippage: string;
+  /** Auto slippage - MUST be string */
+  autoSlippage?: string;
+  /** Max auto slippage BPS - REQUIRED parameter */
+  maxAutoSlippageBps?: string;
   /** Fee percent */
   feePercent?: string;
+  /** To token referrer address */
+  toTokenReferrerAddress?: string;
+  /** Swap receiver address */
+  swapReceiverAddress?: string;
   /** From token referrer wallet address */
   fromTokenReferrerWalletAddress?: string;
   /** To token referrer wallet address */
   toTokenReferrerWalletAddress?: string;
   /** From referrer address */
   fromReferrerAddress?: string;
-  /** To token referrer address */
-  toTokenReferrerAddress?: string;
   /** Positive slippage percent */
   positiveSlippagePercent?: string;
   /** Positive slippage fee address */
@@ -137,8 +137,6 @@ export interface OKXSwapParams {
   priceImpactProtectionPercentage?: string;
   /** Call data memo */
   callDataMemo?: string;
-  /** Auto slippage */
-  autoSlippage?: boolean;
   /** Max auto slippage */
   maxAutoSlippage?: string;
 }
